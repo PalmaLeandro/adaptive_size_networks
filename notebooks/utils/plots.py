@@ -1,4 +1,4 @@
-import io, numpy, pandas, torch, matplotlib.pyplot, matplotlib.cm, matplotlib.colors, ipywidgets
+import io, numpy, pandas, torch, matplotlib.pyplot, matplotlib.cm, matplotlib.colors, matplotlib.patches, ipywidgets
 from .persistance import file_path_from_parameters, check_path
 
 def draw_figure_into_canvas(figure, canvas, *args, **kwargs):
@@ -28,7 +28,7 @@ def limit_series(series, upper_lim=None, lower_lim=None):
 
 def plot_series_and_reference_on_ax(ax, x, y, label, color=None, linestyle=None, fill_between_y=None, 
                                     lower_bound=None, upper_bound=None, log_scale=False, 
-                                    upper_lim=None, lower_lim=None):
+                                    upper_lim=None, lower_lim=None, axis_position='left'):
     if log_scale: lower_lim = 0. if lower_lim is None else max(0., lower_lim)
 
     y = limit_series(y, upper_lim, lower_lim)
@@ -38,7 +38,11 @@ def plot_series_and_reference_on_ax(ax, x, y, label, color=None, linestyle=None,
     [line] = ax.plot(x, y, c=color, label=label, linestyle=linestyle)
     x_lower_lim, x_upper_lim = ax.get_xlim()
     ax.hlines(y[-1], x_lower_lim, x_upper_lim, color='gray', alpha=.3, linestyle='--')
-    ax.text(x_lower_lim, y[-1], f'{y[-1]:.5f}', ha='left')
+    if axis_position == 'left':
+        ax.text(x_lower_lim, y[-1], f'{y[-1]:.5f}', ha='left')
+    elif axis_position == 'right':
+        ax.text(x_upper_lim, y[-1], f'{y[-1]:.5f}', ha='left')
+
     if fill_between_y is not None: 
         up = limit_series(y + fill_between_y, upper_lim, lower_lim)
         down = limit_series(y - fill_between_y, upper_lim, lower_lim)
@@ -52,6 +56,7 @@ def plot_series_and_reference_on_ax(ax, x, y, label, color=None, linestyle=None,
     if upper_bound is not None: ax.plot(x, upper_bound, linestyle=':', c=line.get_color())
     if lower_lim or upper_lim: ax.set_ylim(lower_lim, upper_lim)
     if log_scale: ax.set_yscale('log')
+    ax.set_xlim(x_lower_lim, x_upper_lim)
 
 def plot_train_loss(ax, train_loss, test_loss, sample_size, epoch=0, batch_size=None, legend_loc='upper right', *args, **kwargs):
     ax.clear()
@@ -133,9 +138,11 @@ def plot_samples_and_neurons(ax, dataloader, model, rotation_matrix, activation_
 
     inputs_ = inputs if rotation_matrix is None else numpy.matmul(inputs, rotation_matrix.transpose())
     ax.set_title(f'Input domain (Epoch = {epoch})')
-    ax_lim = max(inputs_[:, 0].abs().max() * 1.1, inputs_[:, 1].max() * 1.1)
+    ax_lim = max(inputs_[:, 0].abs().max().item() * 1.1, inputs_[:, 1].abs().max().item() * 1.1)
     ax.hlines(0, ax_lim, ax_lim, color='black', zorder=1)
     ax.vlines(0, ax_lim, ax_lim, color='black', zorder=1)
+    #for node in nodes:
+    #    ax.add_patch(matplotlib.patches.Circle(node, experiment['epsilon'], color='k', alpha=.05))
     samples_classes = torch.argmax(labels, dim=1) if classes > 2 else labels
     colors = matplotlib.pyplot.get_cmap('RdYlBu', len(torch.unique(samples_classes)))(samples_classes)
     if filter_classes is not None:
@@ -147,8 +154,11 @@ def plot_samples_and_neurons(ax, dataloader, model, rotation_matrix, activation_
         for sample_input_index, sample_input in enumerate(inputs_):
             ax.text(sample_input[0] * 1.05, sample_input[1] * 0.95, str(sample_input_index), fontsize='large', c='r', zorder=3)
 
-    input_layer = (model.layers[0].weight * model.output_layer.weight.norm(dim=0).unsqueeze(1)).detach().cpu().numpy()
+    input_layer = (model.input_layer.weight * model.output_layer.weight.norm(dim=0).unsqueeze(1)).detach().cpu().numpy()
     neurons_weights = numpy.matmul(input_layer, rotation_matrix.transpose())
+    neurons_signs = model.neurons_sign
+    l_1inf_norm = numpy.abs(neurons_weights).max(axis=1)
+    neurons_weights[l_1inf_norm > ax_lim] *= (ax_lim / l_1inf_norm[l_1inf_norm > ax_lim, numpy.newaxis])
 
     if scale is not None:
         ax.set_xlim((mean[0] - scale) * 1.1, (mean[0] + scale) * 1.1); ax.set_ylim((mean[1] - scale) * 1.1, (mean[1] + scale) * 1.1)
@@ -156,18 +166,19 @@ def plot_samples_and_neurons(ax, dataloader, model, rotation_matrix, activation_
         scale = ax_lim
     
     if len(neurons_weights):
-        for neuron_index, neuron_weights in enumerate(neurons_weights):
+        for neuron_index, (neuron_weights, neuron_sign) in enumerate(zip(neurons_weights, neurons_signs)):
             if not discard_dead_units or neuron_index not in model.dead_units[0]:
                 neuron_weights = (neuron_weights[0], neuron_weights[1])
                 norm = numpy.linalg.norm(neuron_weights)
                 neuron_weights = list(map(lambda x: min(max(x, - ax_lim), ax_lim), neuron_weights))
-                ax.scatter(neuron_weights[0], neuron_weights[1], marker='+', s=200, c='b', zorder=3)
+                color = 'blue' if neuron_sign > 0 else ('red' if neuron_sign < 0 else 'black')
+                ax.scatter(neuron_weights[0], neuron_weights[1], marker='+', s=200, c=color, zorder=3)
 
                 normalized_neuron_weights = numpy.array(neuron_weights) / norm
-                ax.plot([0, normalized_neuron_weights[0]], [0, normalized_neuron_weights[1]], c='b', alpha=0.1)
+                ax.plot([0, normalized_neuron_weights[0]], [0, normalized_neuron_weights[1]], c=color, alpha=0.1)
                 
                 if label_neurons:
-                    ax.text(neuron_weights[0] * 1.05, neuron_weights[1] * 0.95, str(neuron_index), fontsize='large', c='b', zorder=3)
+                    ax.text(neuron_weights[0] * 1.05, neuron_weights[1] * 0.95, str(neuron_index), fontsize='large', c=color, zorder=3)
                     
     if plot_activations and classes <= 2:
         domain_mesh = numpy.array([

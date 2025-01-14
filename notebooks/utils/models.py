@@ -138,6 +138,10 @@ class FullyConnectedNeuralNetwork(torch.nn.Module, PersistableModel):
         return (weights_products.T * self.output_layer.weight.norm(dim=0)).squeeze()
     
     @property
+    def neurons_sign(self):
+        return self.output_layer.weight.squeeze().sign()
+    
+    @property
     def norm(self):
         return self.weights_products.sum()
     
