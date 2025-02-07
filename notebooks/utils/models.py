@@ -135,11 +135,11 @@ class FullyConnectedNeuralNetwork(torch.nn.Module, PersistableModel):
         for layer in self.layers[1:]:
             weights_products = torch.norm(layer.weight) @ weights_products
 
-        return (weights_products.T * self.output_layer.weight.norm(dim=0)).squeeze()
+        return (weights_products.T * self.output_layer.weight.norm(dim=0)).reshape(-1)
     
     @property
     def neurons_sign(self):
-        return self.output_layer.weight.squeeze().sign()
+        return self.output_layer.weight.reshape(-1).sign()
     
     @property
     def norm(self):

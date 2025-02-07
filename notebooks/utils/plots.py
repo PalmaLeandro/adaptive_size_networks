@@ -58,14 +58,15 @@ def plot_series_and_reference_on_ax(ax, x, y, label, color=None, linestyle=None,
     if log_scale: ax.set_yscale('log')
     ax.set_xlim(x_lower_lim, x_upper_lim)
 
-def plot_train_loss(ax, train_loss, test_loss, sample_size, epoch=0, batch_size=None, legend_loc='upper right', *args, **kwargs):
+def plot_train_loss(ax, train_loss, test_loss, sample_size, epoch=0, batch_size=None, legend_loc='upper right', 
+                    train_loss_color='blue', test_loss_color='red', prefix='', *args, **kwargs):
     ax.clear()
     ax.set_title(f'Train Loss (Epoch = {epoch})')
     ax.set_xlabel(('S' if batch_size < sample_size else '') + 'GD steps')
     batch_size = sample_size if batch_size is None else batch_size
     iterations = [iteration * sample_size / batch_size for iteration in range(epoch + 1)]
-    plot_series_and_reference_on_ax(ax, iterations, train_loss, 'train', 'b')
-    plot_series_and_reference_on_ax(ax, iterations, test_loss, 'test', 'r')
+    plot_series_and_reference_on_ax(ax, iterations, train_loss, prefix + 'train', train_loss_color)
+    plot_series_and_reference_on_ax(ax, iterations, test_loss, prefix + 'test', test_loss_color)
     if legend_loc:
         ax.legend(prop={'size': 16}, loc=legend_loc)
 
@@ -152,7 +153,7 @@ def plot_samples_and_neurons(ax, dataloader, model, rotation_matrix, activation_
     ax.scatter(inputs_[:, 0], inputs_[:, 1], c=colors, label=samples_classes, zorder=2)
     if label_data:
         for sample_input_index, sample_input in enumerate(inputs_):
-            ax.text(sample_input[0] * 1.05, sample_input[1] * 0.95, str(sample_input_index), fontsize='large', c='r', zorder=3)
+            ax.text(sample_input[0] * 1.05, sample_input[1] * 0.95, f'({sample_input[0]:.2e}, {sample_input[1]:.2e})', fontsize='large', c='k', zorder=3)
 
     input_layer = (model.input_layer.weight * model.output_layer.weight.norm(dim=0).unsqueeze(1)).detach().cpu().numpy()
     neurons_weights = numpy.matmul(input_layer, rotation_matrix.transpose())
